@@ -1,6 +1,8 @@
+require "net/http"
+
 module Net
-  module Http
-    module NtlmAuth
+  class HTTP
+    module NTLMAuth
       VERSION = "0.1.0"
     end
   end
