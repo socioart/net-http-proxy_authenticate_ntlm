@@ -19,21 +19,9 @@ module Net
       self.enabled = false
 
       def request(req, body = nil, &block)  # :yield: +response+
-        unless started?
-          start {
-            req['connection'] ||= 'close'
-            return request(req, body, &block)
-          }
-        end
-        if proxy_user()
-          req.proxy_basic_auth proxy_user(), proxy_pass() unless use_ssl?
-        end
-        req.set_body_internal body
-        res = transport_request(req, &block)
-        if sspi_auth?(res)
-          sspi_auth(req)
-          res = transport_request(req, &block)
-        end
+        return super unless NTLMAuth.enabled?
+
+        res = super
         if ntlm_auth?(res)
           ntlm_auth(req)
           res = transport_request(req, &block)
@@ -41,38 +29,10 @@ module Net
         res
       end
 
-      def begin_request_hacked(req)
-        if proxy_user()
-          req.proxy_basic_auth proxy_user(), proxy_pass() unless use_ssl?
-        end
-
-        begin_transport req
-        req.exec @socket, @curr_http_version, edit_path(req.path)
-        begin
-          res = Net::HTTPResponse.read_new(@socket)
-        end while res.kind_of?(Net::HTTPContinue)
-
-        res.begin_reading_body_hacked(@socket, req.response_body_permitted?)
-        @req_hacked, @res_hacked = req, res
-
-        if ntlm_auth?(res)
-          end_request_hacked
-          ntlm_auth(req)
-
-          begin_transport req
-          req.exec @socket, @curr_http_version, edit_path(req.path)
-          begin
-            res = Net::HTTPResponse.read_new(@socket)
-          end while res.kind_of?(Net::HTTPContinue)
-
-          res.begin_reading_body_hacked(@socket, req.response_body_permitted?)
-          @req_hacked, @res_hacked = req, res
-        end
-
-        @res_hacked
-      end
 
       def connect
+        return super unless NTLMAuth.enabled?
+
         if proxy? then
           conn_address = proxy_address
           conn_port    = proxy_port
@@ -153,7 +113,6 @@ module Net
 
       private
       def ntlm_auth?(res)
-        return false unless NTLMAuth.enabled?
         proxy_user && res.code.to_i == 407 && Array(res["Proxy-Authenticate"]).include?("NTLM")
       end
 
