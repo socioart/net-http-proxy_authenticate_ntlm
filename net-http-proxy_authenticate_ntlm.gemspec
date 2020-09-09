@@ -1,20 +1,20 @@
-require_relative 'lib/net/http/ntlm_auth/version'
+require_relative 'lib/net/http/proxy_authenticate_ntlm/version'
 
 Gem::Specification.new do |spec|
-  spec.name          = "net-http-ntlm_auth"
-  spec.version       = Net::HTTP::NTLMAuth::VERSION
+  spec.name          = "net-http-proxy_authenticate_ntlm"
+  spec.version       = Net::HTTP::ProxyAuthenticateNTLM::VERSION
   spec.authors       = ["labocho"]
   spec.email         = ["labocho@penguinlab.jp"]
 
-  spec.summary       = "Add support NTLM authentication to net/http"
-  spec.description   = "Add support NTLM authentication to net/http"
-  spec.homepage      = "https://github.com/socioart/net-http-ntlm_auth"
+  spec.summary       = "Add support HTTP proxy using NTLM authentication to net/http"
+  spec.description   = "Add support HTTP proxy using NTLM authentication to net/http"
+  spec.homepage      = "https://github.com/socioart/net-http-proxy_authenticate_ntlm"
   spec.license       = "MIT"
   spec.required_ruby_version = Gem::Requirement.new(">= 2.3.0")
 
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/socioart/net-http-ntlm_auth"
-  spec.metadata["changelog_uri"] = "https://github.com/socioart/net-http-ntlm_auth/blob/master/CHANGELOG.md"
+  spec.metadata["source_code_uri"] = "https://github.com/socioart/net-http-proxy_authenticate_ntlm"
+  spec.metadata["changelog_uri"] = "https://github.com/socioart/net-http-proxy_authenticate_ntlm/blob/master/CHANGELOG.md"
 
   # Specify which files should be added to the gem when it is released.
   # The `git ls-files -z` loads the files in the RubyGem that have been added into git.

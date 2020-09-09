@@ -1,5 +1,5 @@
 require "bundler/setup"
-require "net/http/ntlm_auth"
+require "net/http/proxy_authenticate_ntlm"
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure

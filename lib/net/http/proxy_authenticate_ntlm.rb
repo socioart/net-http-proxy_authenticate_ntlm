@@ -1,4 +1,4 @@
-require "net/http/ntlm_auth/version"
+require "net/http/proxy_authenticate_ntlm/version"
 
 require "net/http"
 require "net/https"
@@ -7,7 +7,7 @@ require "kconv"
 
 module Net
   class HTTP
-    module NTLMAuth
+    module ProxyAuthenticateNTLM
       def self.enabled?
         @enabled
       end
@@ -19,7 +19,7 @@ module Net
       self.enabled = false
 
       def request(req, body = nil, &block)  # :yield: +response+
-        return super unless NTLMAuth.enabled?
+        return super unless ProxyAuthenticateNTLM.enabled?
 
         res = super
         if ntlm_auth?(res)
@@ -31,7 +31,7 @@ module Net
 
 
       def connect
-        return super unless NTLMAuth.enabled?
+        return super unless ProxyAuthenticateNTLM.enabled?
 
         if proxy? then
           conn_address = proxy_address
@@ -199,4 +199,4 @@ module Net
   end
 end
 
-Net::HTTP.prepend(Net::HTTP::NTLMAuth)
+Net::HTTP.prepend(Net::HTTP::ProxyAuthenticateNTLM)

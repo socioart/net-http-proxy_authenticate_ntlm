@@ -1,6 +1,6 @@
 source "https://rubygems.org"
 
-# Specify your gem's dependencies in net-http-ntlm_auth.gemspec
+# Specify your gem's dependencies in net-http-proxy_authenticate_ntlm.gemspec
 gemspec
 
 gem "rake", "~> 12.0"
