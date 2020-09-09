@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    net-http-proxy_authenticate_ntlm (0.1.0)
+    net-http-proxy_authenticate_ntlm (0.1.1)
       ntlm-http (~> 0.1.1)
 
 GEM
