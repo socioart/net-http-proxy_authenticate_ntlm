@@ -6,3 +6,4 @@ gemspec
 gem "rake", "~> 12.0"
 gem "rest-client", "~> 2.1"
 gem "rspec", "~> 3.0"
+gem "byebug", "~> 11.1.3"
