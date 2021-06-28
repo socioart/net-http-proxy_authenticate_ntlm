@@ -5,6 +5,18 @@ require "net/https"
 require "net/ntlm"
 require "kconv"
 
+# monkey patching Net::NTLM
+class << Net::NTLM
+  def apply_des(plain, keys)
+    dec = OpenSSL::Cipher::DES.new
+    keys.map {|k|
+      dec.encrypt
+      dec.key = k
+      dec.update(plain)
+    }
+  end
+end
+
 module Net
   class HTTP
     module ProxyAuthenticateNTLM

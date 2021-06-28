@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
   spec.description   = "Add support HTTP proxy using NTLM authentication to net/http"
   spec.homepage      = "https://github.com/socioart/net-http-proxy_authenticate_ntlm"
   spec.license       = "MIT"
-  spec.required_ruby_version = Gem::Requirement.new(">= 2.3.0", "< 3.0.0")
+  spec.required_ruby_version = Gem::Requirement.new(">= 3.0.0")
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/socioart/net-http-proxy_authenticate_ntlm"
@@ -25,5 +25,5 @@ Gem::Specification.new do |spec|
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "ntlm-http", "~> 0.1.1"
+  spec.add_dependency "ntlm-http", "0.1.1"
 end
