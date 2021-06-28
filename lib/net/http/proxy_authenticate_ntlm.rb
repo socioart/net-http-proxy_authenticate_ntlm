@@ -27,13 +27,14 @@ module Net
             return request(req, body, &block)
           }
         end
-        if proxy_user()
-          ntlm_auth(req)
-        end
+
         req.set_body_internal body
         res = transport_request(req, &block)
         if sspi_auth?(res)
           sspi_auth(req)
+          res = transport_request(req, &block)
+        elsif ntlm_auth?(res)
+          ntlm_auth(req)
           res = transport_request(req, &block)
         end
         res
@@ -129,26 +130,13 @@ module Net
       def ntlm_auth(req)
         negotiate_message = Net::NTLM::Message::Type1.new
 
-        @socket.write([
-          "GET http://#{@address}:#{@port}/ HTTP/#{HTTPVersion}",
-          "Host: #{@address}:#{@port}",
-          "Proxy-Authorization: NTLM #{Base64.strict_encode64(negotiate_message.serialize)}",
-        ].join("\r\n") + "\r\n\r\n")
+        req["Proxy-Authorization"] = "NTLM #{Base64.strict_encode64(negotiate_message.serialize)}"
+        req["Connection"] = "Keep-Alive"
+        req["Proxy-Connection"] = "Keep-Alive"
+        negotiate_response = transport_request(req)
+        authphrase = negotiate_response["Proxy-Authenticate"] or return res
 
-        negotiate_response = HTTPResponse.read_new(@socket)
-
-        begin
-          negotiate_response.value
-        rescue Net::HTTPClientException
-          unless $!.response.code.to_i == 407
-            raise $!
-          end
-          if negotiate_response["Content-Length"]
-            @socket.read(negotiate_response["Content-Length"].to_i)
-          end
-        end
-
-        challenge_message = Net::NTLM::Message::Type2.parse(Base64.strict_decode64(negotiate_response["Proxy-Authenticate"].gsub(/^NTLM /, "")))
+        challenge_message = Net::NTLM::Message::Type2.parse(Base64.strict_decode64(authphrase.gsub(/^NTLM /, "")))
         authenticate_message = challenge_message.response(parse_proxy_user(proxy_user).merge(password: proxy_pass))
 
         req["Proxy-Authorization"] = "NTLM #{Base64.strict_encode64(authenticate_message.serialize)}"
