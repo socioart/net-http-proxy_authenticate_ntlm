@@ -52,86 +52,75 @@ module Net
         res
       end
 
-
       def connect
         return super unless ProxyAuthenticateNTLM.enabled?
 
         if proxy? then
-          conn_address = proxy_address
-          conn_port    = proxy_port
+          conn_addr = proxy_address
+          conn_port = proxy_port
         else
-          conn_address = address
-          conn_port    = port
+          conn_addr = conn_address
+          conn_port = port
         end
 
-        D "opening connection to #{conn_address}:#{conn_port}..."
+        D "opening connection to #{conn_addr}:#{conn_port}..."
         s = Timeout.timeout(@open_timeout, Net::OpenTimeout) {
           begin
-            TCPSocket.open(conn_address, conn_port, @local_host, @local_port)
+            TCPSocket.open(conn_addr, conn_port, @local_host, @local_port)
           rescue => e
             raise e, "Failed to open TCP connection to " +
-              "#{conn_address}:#{conn_port} (#{e.message})"
+              "#{conn_addr}:#{conn_port} (#{e.message})"
           end
         }
         s.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
         D "opened"
         if use_ssl?
+          if proxy?
+            connect_proxy(s, conn_address)
+          end
+
           ssl_parameters = Hash.new
           iv_list = instance_variables
           SSL_IVNAMES.each_with_index do |ivname, i|
-            if iv_list.include?(ivname) and
+            if iv_list.include?(ivname)
               value = instance_variable_get(ivname)
-              ssl_parameters[SSL_ATTRIBUTES[i]] = value if value
+              unless value.nil?
+                ssl_parameters[SSL_ATTRIBUTES[i]] = value
+              end
             end
           end
           @ssl_context = OpenSSL::SSL::SSLContext.new
           @ssl_context.set_params(ssl_parameters)
-          D "starting SSL for #{conn_address}:#{conn_port}..."
+          @ssl_context.session_cache_mode =
+            OpenSSL::SSL::SSLContext::SESSION_CACHE_CLIENT |
+            OpenSSL::SSL::SSLContext::SESSION_CACHE_NO_INTERNAL_STORE
+          @ssl_context.session_new_cb = proc {|sock, sess| @ssl_session = sess }
+          D "starting SSL for #{conn_addr}:#{conn_port}..."
           s = OpenSSL::SSL::SSLSocket.new(s, @ssl_context)
           s.sync_close = true
-          D "SSL established"
-        end
-        @socket = BufferedIO.new(s)
-        @socket.read_timeout = @read_timeout
-        @socket.continue_timeout = @continue_timeout
-        @socket.debug_output = @debug_output
-        if use_ssl?
-          begin
-            if proxy?
-              connect_proxy
-            end
-            # Server Name Indication (SNI) RFC 3546
-            s.hostname = @address if s.respond_to? :hostname=
-            if @ssl_session and
-               Process.clock_gettime(Process::CLOCK_REALTIME) < @ssl_session.time.to_f + @ssl_session.timeout
-              s.session = @ssl_session if @ssl_session
-            end
-            if timeout = @open_timeout
-              while true
-                raise Net::OpenTimeout if timeout <= 0
-                start = Process.clock_gettime Process::CLOCK_MONOTONIC
-                # to_io is required because SSLSocket doesn't have wait_readable yet
-                case s.connect_nonblock(exception: false)
-                when :wait_readable; s.to_io.wait_readable(timeout)
-                when :wait_writable; s.to_io.wait_writable(timeout)
-                else; break
-                end
-                timeout -= Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
-              end
-            else
-              s.connect
-            end
-            if @ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE
-              s.post_connection_check(@address)
-            end
-            @ssl_session = s.session
-          rescue => exception
-            D "Conn close because of connect error #{exception}"
-            @socket.close if @socket and not @socket.closed?
-            raise exception
+          # Server Name Indication (SNI) RFC 3546
+          s.hostname = @address if s.respond_to? :hostname=
+          if @ssl_session and
+             Process.clock_gettime(Process::CLOCK_REALTIME) < @ssl_session.time.to_f + @ssl_session.timeout
+            s.session = @ssl_session
           end
+          ssl_socket_connect(s, @open_timeout)
+          if (@ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE) && @ssl_context.verify_hostname
+            s.post_connection_check(@address)
+          end
+          D "SSL established, protocol: #{s.ssl_version}, cipher: #{s.cipher[0]}"
         end
+        @socket = BufferedIO.new(s, read_timeout: @read_timeout,
+                                 write_timeout: @write_timeout,
+                                 continue_timeout: @continue_timeout,
+                                 debug_output: @debug_output)
         on_connect
+      rescue => exception
+        if s
+          D "Conn close because of connect error #{exception}"
+          s.close
+        end
+        raise
       end
 
       private
@@ -154,39 +143,46 @@ module Net
         req["Proxy-Authorization"] = "NTLM #{Base64.strict_encode64(authenticate_message.serialize)}"
       end
 
-      def connect_proxy
-        buf = "CONNECT #{@address}:#{@port} HTTP/#{HTTPVersion}\r\n"
+      def connect_proxy(s, conn_address)
+        plain_sock = BufferedIO.new(s, read_timeout: @read_timeout,
+                                    write_timeout: @write_timeout,
+                                    continue_timeout: @continue_timeout,
+                                    debug_output: @debug_output)
+        buf = "CONNECT #{conn_address}:#{@port} HTTP/#{HTTPVersion}\r\n"
         buf << "Host: #{@address}:#{@port}\r\n"
-
         if proxy_user
-          credential = ["#{proxy_user}:#{proxy_pass}"].pack('m')
-          credential.delete!("\r\n")
+          credential = ["#{proxy_user}:#{proxy_pass}"].pack('m0')
           buf << "Proxy-Authorization: Basic #{credential}\r\n"
         end
-
         buf << "\r\n"
-        @socket.write(buf)
-        HTTPResponse.read_new(@socket).value
+        plain_sock.write(buf)
+        HTTPResponse.read_new(plain_sock).value
+        # assuming nothing left in buffers after successful CONNECT response
       rescue Net::HTTPServerException
         if ntlm_auth?($!.response)
-          @socket.read($!.response["Content-Length"].to_i)
-          connect_proxy_with_ntlm_auth
+          plain_sock.read($!.response["Content-Length"].to_i)
+          connect_proxy_with_ntlm_auth(s, conn_address)
         else
           raise
         end
       end
 
-      def connect_proxy_with_ntlm_auth
+      def connect_proxy_with_ntlm_auth(s, conn_address)
+        plain_sock = BufferedIO.new(s, read_timeout: @read_timeout,
+                                    write_timeout: @write_timeout,
+                                    continue_timeout: @continue_timeout,
+                                    debug_output: @debug_output)
+
         negotiate_message = Net::NTLM::Message::Type1.new
 
-        @socket.write([
-          "CONNECT #{@address}:#{@port} HTTP/#{HTTPVersion}",
+        plain_sock.write([
+          "CONNECT #{conn_address}:#{@port} HTTP/#{HTTPVersion}",
           "Host: #{@address}:#{@port}",
           "Proxy-Authorization: NTLM #{Base64.strict_encode64(negotiate_message.serialize)}",
           "Proxy-Connection: Keep-Alive",
         ].join("\r\n") + "\r\n\r\n")
 
-        res = HTTPResponse.read_new(@socket)
+        res = HTTPResponse.read_new(plain_sock)
 
         begin
           res.value
@@ -195,20 +191,20 @@ module Net
             raise
           end
           if res["Content-Length"]
-            @socket.read(res["Content-Length"].to_i)
+            plain_sock.read(res["Content-Length"].to_i)
           end
         end
 
         challenge_message = Net::NTLM::Message::Type2.parse(Base64.decode64(res["Proxy-Authenticate"].gsub(/^NTLM /, "")))
         authenticate_message = challenge_message.response(parse_proxy_user(proxy_user).merge(password: proxy_pass))
 
-        @socket.write([
-          "CONNECT #{@address}:#{@port} HTTP/#{HTTPVersion}",
+        plain_sock.write([
+          "CONNECT #{conn_address}:#{@port} HTTP/#{HTTPVersion}",
           "Host: #{@address}:#{@port}",
           "Proxy-Authorization: NTLM #{Base64.strict_encode64(authenticate_message.serialize)}",
           "Proxy-Connection: Keep-Alive",
         ].join("\r\n") + "\r\n\r\n")
-        HTTPResponse.read_new(@socket).value
+        HTTPResponse.read_new(plain_sock).value
       end
 
       # Returns {user: user, domain: domain}

@@ -20,7 +20,7 @@ RSpec.describe Net::HTTP::ProxyAuthenticateNTLM do
       expect(res.code).to eq "200"
     end
 
-    it "should get from http://example.com" do
+    it "should get from https://example.com" do
       http = Net::HTTP.new("example.com", 443, proxy.hostname, proxy.port, proxy.user, proxy.password)
       http.use_ssl = true
       res = http.start do |h|
